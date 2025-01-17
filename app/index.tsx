@@ -11,7 +11,7 @@ import InputPage from './pages/input';
 WebBrowser.maybeCompleteAuthSession();
 
 // @ts-ignore
-import {CLIENT_ID, CLIENT_SECRET} from '@env'
+import { CLIENT_ID, CLIENT_SECRET } from '@env';
 
 interface Playlist {
   id: string;
