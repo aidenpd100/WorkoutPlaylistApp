@@ -32,6 +32,8 @@ const discovery = {
   tokenEndpoint: 'https://accounts.spotify.com/api/token',
 };
 
+const IP = 'http://10.203.100.230';
+
 const clearTokens = async () => {
   try {
     await AsyncStorage.removeItem('accessToken');
@@ -75,6 +77,23 @@ const refreshAccessToken = async () => {
   } catch (error: any) {
     console.error('Error refreshing access token:', error.response?.data || error.message);
     return null;
+  }
+};
+
+const addSong = async (songId: string, songData: { title: string; artist: string; duration: string; runnabilityScore: number }) => {
+  try {
+    const response = await axios.post(`${IP}:3000/add-song`, {
+      id: songId,
+      title: songData.title,
+      artist: songData.artist,
+      duration: songData.duration,
+      runnability_score: songData.runnabilityScore
+    });
+
+    console.log('Song added successfully:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error adding song:', error.response?.data || error.message);
   }
 };
 
@@ -174,7 +193,6 @@ export default function App() {
         .then(async (response) => {
           const playlists: Playlist[] = response.data.items;
           const allTracksFetched: Track[] = [];
-          const seenTracks = new Set();
   
           const trackPromises = playlists.map((playlist, index) =>
             axios
@@ -189,23 +207,49 @@ export default function App() {
   
                 for (let i = 0; i < totalTracks; i++) {
                   const track = tracks[i];
-                  if (!seenTracks.has(track.id)) {
-                    seenTracks.add(track.id);
-  
-                    try {
-                      const pythonApiUrl = 'http://10.203.100.230:8000/analyze-song/';
-                      const runnabilityResponse = await axios.post(pythonApiUrl, {
-                        artist: track.artists[0].name,
-                        title: track.name
-                      });
-                      const runnabilityScore = runnabilityResponse.data.runability_score;
-                      const duration = runnabilityResponse.data.duration;
-  
+
+                  try {
+                    const existsResponse = await axios.get(`${IP}:3000/song-exists/${track.id}`);
+                    const exists = existsResponse.data.exists;
+
+                    if (exists) {
+                      console.log(`${track.name} exists in the DB!`);
+
+                      // Fetch duration and runnability score from the database
+                      const songDataResponse = await axios.get(`${IP}:3000/get-song-data/${track.id}`);
+                      const { runnabilityScore, duration } = songDataResponse.data;
+
                       allTracksFetched.push({ ...track, runnabilityScore, duration });
                       setProgress((prevProgress) => prevProgress + 1);
-                    } catch (error) {
-                      console.error(`Error fetching runnability score for ${track.name}:`, error);
-                    }
+                    } else {
+                      try {
+                        const pythonApiUrl = `${IP}:8000/analyze-song/`;
+                        const runnabilityResponse = await axios.post(pythonApiUrl, {
+                          artist: track.artists[0].name,
+                          title: track.name
+                        });
+                        const runnabilityScore = runnabilityResponse.data.runability_score;
+                        const duration = runnabilityResponse.data.duration;
+
+                        // Wasn't found
+                        if (duration == "Unknown") { continue; }
+
+                        // Add song to the database
+                        await addSong(track.id, {
+                          title: track.name,
+                          artist: track.artists[0].name,
+                          duration,
+                          runnabilityScore
+                        });
+    
+                        allTracksFetched.push({ ...track, runnabilityScore, duration });
+                        setProgress((prevProgress) => prevProgress + 1);
+                      } catch (error) {
+                        console.error(`Error fetching runnability score for ${track.name}:`, error);
+                      }
+                    } 
+                  } catch (error) {
+                    console.error(`Error checking if song exists in DB:`, error);
                   }
                 }
               })

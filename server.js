@@ -30,8 +30,6 @@ app.get('/songs', async (req, res) => {
 
 // POST endpoint to add a song
 app.post('/add-song', async (req, res) => {
-  console.log(req.body);  // Check the body in the console
-
   const { id, title, artist, duration, runnability_score } = req.body;
 
   // Ensure all required fields are present
@@ -48,6 +46,36 @@ app.post('/add-song', async (req, res) => {
 
     // Respond with the inserted song
     res.status(201).json({ song: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/song-exists/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await client.query('SELECT EXISTS (SELECT 1 FROM songs WHERE id = $1)', [id]);
+    const exists = result.rows[0].exists;
+    res.json({ exists });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/get-song-data/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await client.query('SELECT runnability_score, duration FROM songs WHERE id = $1', [id]);
+    if (result.rows.length > 0) {
+      // Song found; return the data
+      const { runnability_score, duration } = result.rows[0];
+      res.json({ runnabilityScore: runnability_score, duration });
+    } else {
+      // Song not found
+      res.status(404).json({ error: 'Song not found' });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
